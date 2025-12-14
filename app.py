@@ -30,8 +30,8 @@ with st.expander("ℹ️ About this prototype"):
 # 2) PUT YOUR DIFY SETTINGS HERE
 # -----------------------------
 # ✅ Replace these with your real values (or keep your existing ones from old app.py)
-DIFY_URL = "https://api.dify.ai/v1"
-DIFY_API_KEY = "app-GTdcxYQ0gmP87FWCjrfatEzB"
+DIFY_URL = "https://udify.app/workflow/HG65XaBsCIXHCJXC"
+DIFY_API_KEY = "app-zGyqZOv41RDBmUcbRB1tsf9n"
 
 # -----------------------------
 # 3) USER INPUTS
