@@ -18,21 +18,20 @@ st.caption(
 with st.expander("ℹ️ About this prototype"):
     st.markdown(
         """
-        **Dental Disease Assistant (DDA)** is a Retrieval-Augmented Generation (RAG) system.
+        **Dental Disease Assistant (DDA)** is a Retrieval-Augmented Generation (RAG) workflow.
 
-        It retrieves relevant passages from authoritative dental guidelines (AAP, AAE, ADA)
-        and generates structured, evidence-linked responses.
+        It retrieves relevant passages from authoritative dental guidelines and produces a structured,
+        evidence-linked response.
 
-        **Safety behavior:**  
-        If no relevant evidence is found in the knowledge base, the assistant explicitly
-        returns an *Insufficient Evidence* response instead of guessing.
+        **Safety behavior:** If insufficient evidence is retrieved, the assistant returns an
+        *Insufficient Evidence* response instead of guessing.
         """
     )
 
 # =====================================================
-# 2) DIFY CONFIGURATION (SAFE — FROM STREAMLIT SECRETS)
+# 2) DIFY WORKFLOW CONFIG (SAFE — FROM STREAMLIT SECRETS)
 # =====================================================
-DIFY_URL = "https://api.dify.ai/v1/chat-messages"
+DIFY_URL = "https://api.dify.ai/v1/workflows/run"
 
 if "DIFY_API_KEY" not in st.secrets:
     st.error(
@@ -45,7 +44,6 @@ if "DIFY_API_KEY" not in st.secrets:
 
 DIFY_API_KEY = str(st.secrets["DIFY_API_KEY"]).strip()
 
-# Basic validation (no printing of key)
 if not DIFY_API_KEY.startswith("app-"):
     st.error(
         "Invalid DIFY_API_KEY format.\n\n"
@@ -67,7 +65,7 @@ role = st.radio(
 st.subheader("Clinical Question")
 query = st.text_area(
     "Enter your question:",
-    placeholder="e.g., What defines periodontitis according to AAP 2018?"
+    placeholder="e.g., Tooth #30 has ~40% radiographic bone loss... Give likely Stage/Grade and confirmatory steps."
 )
 
 st.subheader("Optional Findings (JSON)")
@@ -76,7 +74,7 @@ findings_json = st.text_area(
     placeholder='{"tooth":"30","finding":"bone loss","severity":"moderate"}'
 )
 
-# Optional JSON validation (warning only)
+# Optional: validate JSON (warning only)
 if findings_json.strip():
     try:
         json.loads(findings_json)
@@ -85,27 +83,26 @@ if findings_json.strip():
         st.warning("⚠️ Optional findings is not valid JSON. You may leave it empty or fix formatting.")
 
 # =====================================================
-# 4) RUN BUTTON — CALL DIFY
+# 4) RUN BUTTON — CALL DIFY WORKFLOW
 # =====================================================
 if st.button("Run Dental Disease Assistant"):
     if not query.strip():
         st.error("Please enter a question before submitting.")
     else:
-        with st.spinner("Retrieving guideline-based evidence..."):
+        with st.spinner("Running workflow and retrieving guideline-based evidence..."):
             headers = {
                 "Authorization": f"Bearer {DIFY_API_KEY}",
                 "Content-Type": "application/json"
             }
 
-            # IMPORTANT:
-            # - query must be TOP-LEVEL
-            # - inputs must match Dify Start-node variable names
+            # ✅ MUST match Start node variable names EXACTLY:
+            # query (lowercase), Role (capital R), findings_json
             payload = {
                 "inputs": {
-                    "role": role,
+                    "query": query,
+                    "Role": role,
                     "findings_json": findings_json
                 },
-                "query": query,
                 "response_mode": "blocking",
                 "user": "streamlit-user"
             }
@@ -115,7 +112,7 @@ if st.button("Run Dental Disease Assistant"):
                     DIFY_URL,
                     headers=headers,
                     json=payload,
-                    timeout=60
+                    timeout=90
                 )
 
                 st.subheader("Assistant Response")
@@ -125,12 +122,23 @@ if st.button("Run Dental Disease Assistant"):
                     st.code(response.text)
                 else:
                     data = response.json()
-                    answer = data.get("answer", "")
+
+                    # Workflow outputs usually live here:
+                    outputs = (data.get("data") or {}).get("outputs") or {}
+
+                    # Your END node shows "textString" in the screenshot, so try that first
+                    answer = (
+                        outputs.get("textString")
+                        or outputs.get("text")
+                        or outputs.get("answer")
+                        or outputs.get("result")
+                        or outputs.get("output")
+                    )
 
                     if answer:
                         st.markdown(answer)
                     else:
-                        st.warning("No 'answer' field returned. Full response shown below:")
+                        st.warning("Could not find a text output field. Showing full workflow response JSON:")
                         st.json(data)
 
             except requests.exceptions.RequestException as e:
