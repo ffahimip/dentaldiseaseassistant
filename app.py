@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import json
+import os
 
 # -----------------------------
 # PAGE SETTINGS
@@ -19,25 +20,37 @@ with st.expander("ℹ️ About this prototype"):
     st.markdown(
         """
         **Dental Disease Assistant (DDA)** is a Retrieval-Augmented Generation (RAG) system.
-        It retrieves relevant passages from a curated knowledge base and generates a structured response
-        with references.
+        It retrieves relevant passages from a curated knowledge base and generates a structured response with references.
 
         **Safety:** If no supporting evidence is retrieved, the system returns an *Insufficient Evidence* response.
         """
     )
 
 # -----------------------------
+# DEBUG: SHOW WHICH SECRETS KEYS ARE VISIBLE (SAFE)
+# -----------------------------
+with st.expander("🧪 Debug (Secrets) — open only if needed"):
+    st.write("Visible secret keys:", list(st.secrets.keys()))
+    st.write("Visible env var DIFY_API_KEY:", "YES" if os.environ.get("DIFY_API_KEY") else "NO")
+
+# -----------------------------
 # DIFY SETTINGS
 # -----------------------------
 DIFY_URL = "https://api.dify.ai/v1/chat-messages"
 
-# Read API Key from Streamlit Secrets (Streamlit Cloud -> App settings -> Secrets)
-# Add this in Secrets (TOML):
-# DIFY_API_KEY = "app-xxxxxxxxxxxxxxxx"
-try:
-    DIFY_API_KEY = st.secrets["app-Vg5HnRRHlmhZUlL7T7ud9ofA"]
-except Exception:
-    st.error("Missing DIFY_API_KEY in Streamlit Secrets. Add it in App Settings → Secrets.")
+# Robust key loading: Streamlit Secrets OR environment variable fallback
+DIFY_API_KEY = st.secrets.get("app-Vg5HnRRHlmhZUlL7T7ud9ofA") or os.environ.get("app-Vg5HnRRHlmhZUlL7T7ud9ofA")
+
+if not DIFY_API_KEY:
+    st.error(
+        "Missing DIFY_API_KEY in Streamlit Secrets.\n\n"
+        "Fix:\n"
+        "1) Go to App Settings → Secrets\n"
+        "2) Paste ONLY this line (TOML):\n"
+        '   DIFY_API_KEY = "app-xxxxxxxxxxxxxxxx"\n'
+        "3) Save, wait ~60 seconds, then Reboot app.\n\n"
+        f"Debug: Visible secret keys right now: {list(st.secrets.keys())}"
+    )
     st.stop()
 
 # -----------------------------
@@ -62,13 +75,12 @@ findings_json = st.text_area(
     placeholder='{"tooth":"30","finding":"bone loss","severity":"moderate"}'
 )
 
-# Optional: validate JSON if user typed something
-parsed_findings = None
+# Optional: validate JSON (does not block submission, just warns)
 if findings_json.strip():
     try:
-        parsed_findings = json.loads(findings_json)
+        json.loads(findings_json)
     except json.JSONDecodeError:
-        st.warning("Optional Findings is not valid JSON. You can leave it empty or fix the formatting.")
+        st.warning("Optional Findings is not valid JSON. You can leave it empty or fix formatting.")
 
 # -----------------------------
 # RUN BUTTON
@@ -84,11 +96,14 @@ if st.button("Run Dental Disease Assistant"):
             }
 
             # ✅ Correct Dify Chat API payload:
+            # - query is TOP-LEVEL
+            # - inputs contains only your workflow input variables
             payload = {
                 "inputs": {
-                    # These must match your Dify Start-node variables:
+                    # These must match your Dify Start-node variable names.
+                    # If your Start node uses Role (capital R), tell me and we’ll change this key.
                     "role": role,
-                    "findings_json": findings_json  # keep as string; Dify will receive it as provided
+                    "findings_json": findings_json
                 },
                 "query": query,
                 "response_mode": "blocking",
@@ -103,18 +118,19 @@ if st.button("Run Dental Disease Assistant"):
                     timeout=60
                 )
 
+                st.subheader("Assistant Response")
+
                 if response.status_code != 200:
                     st.error(f"Dify API error {response.status_code}")
                     st.code(response.text)
                 else:
                     data = response.json()
-                    answer = data.get("answer", "")
+                    answer = data.get("answer")
 
-                    st.subheader("Assistant Response")
                     if answer:
                         st.markdown(answer)
                     else:
-                        st.warning("No 'answer' field returned. Showing full JSON response:")
+                        st.warning("No 'answer' field returned. Showing full JSON:")
                         st.json(data)
 
             except requests.exceptions.RequestException as e:
